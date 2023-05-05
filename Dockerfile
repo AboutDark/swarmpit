@@ -1,17 +1,20 @@
-FROM debian:buster-slim
-
-RUN apt-get update && \
-    mkdir -p /usr/share/man/man1 && \
-    apt-get install -y ca-certificates curl openjdk-11-jre-headless libjffi-java
-
-ADD dev/script/install-docker-client.sh .
-RUN bash install-docker-client.sh
-
-RUN mkdir -p /usr/src/app
-WORKDIR /usr/src/app
-COPY target/swarmpit.jar /usr/src/app/
-
-HEALTHCHECK CMD curl --fail -s http://localhost:8080
-
+FROM openjdk:21-slim AS base
+WORKDIR /app
 EXPOSE 8080
-CMD ["java", "-jar", "swarmpit.jar"]
+
+FROM openjdk:21-slim AS build
+WORKDIR /src
+COPY . .
+RUN apt update
+RUN apt upgrade -y
+RUN apt install curl -y
+RUN curl https://raw.githubusercontent.com/technomancy/leiningen/stable/bin/lein > lein
+RUN chmod +x lein
+RUN ./lein deps
+RUN ./lein with-profile prod uberjar
+
+FROM base AS final
+WORKDIR /app
+COPY --from=build /src/target/swarmpit.jar .
+ENTRYPOINT ["java", "-jar", "swarmpit.jar"]
+
